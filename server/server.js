@@ -26,7 +26,10 @@ io.on('connection', (socket) => {
 
         socket.join(params.room);
         users.removeUserById(socket.id);
-        users.addUser({id: socket.id, name: params.name, room: params.room});
+        var user = users.addUser({id: socket.id, name: params.name, room: params.room});
+        if (!user) {
+            callback('同じ表示名のユーザがすでに存在しています');
+        }
 
         io.to(params.room).emit('updateUserList', users.getUserListByRoom(params.room));
         socket.broadcast.to(params.room).emit('newMessage', generateMessage('Admin', `${params.name}さんが参加しました。`));
