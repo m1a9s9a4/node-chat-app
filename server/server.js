@@ -4,11 +4,15 @@ const express = require('express');
 const socketIO = require('socket.io');
 
 const {generateMessage, generateLocationMessage} = require('./utils/message');
+const {isRealString} = require('./utils/validation');
+const {Users} = require('./utils/users');
+
 const publicPath = path.join(__dirname, '../public');
 const port = process.env.PORT || 3000;
 var app = express();
 var server = http.createServer(app);
 var io = socketIO(server);
+var users = new Users();
 
 app.use(express.static(publicPath));
 
@@ -17,10 +21,19 @@ io.on('connection', (socket) => {
 
     socket.emit('newMessage', generateMessage('Admin', 'Welcome to chat app'));
 
-    socket.broadcast.emit('newMessage', generateMessage('Admin', 'new user joined'));
+    socket.on('join', (params, callback) => {
+        if (!isRealString(params.name) || !isRealString(params.room)) callback('表示名と部屋名は必須項目です。');
+
+        socket.join(params.room);
+        users.removeUserById(socket.id);
+        users.addUser({id: socket.id, name: params.name, room: params.room});
+
+        io.to(params.room).emit('updateUserList', users.getUserListByRoom(params.room));
+        socket.broadcast.to(params.room).emit('newMessage', generateMessage('Admin', `${params.name}さんが参加しました。`));
+        callback();
+    });
 
     socket.on('createMessage', (message, callback) => {
-        console.log('createMessage', message);
         io.emit('newMessage', generateMessage(message.from, message.text));
         callback("from server");
     });
@@ -30,7 +43,12 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        console.log('user was disconnected');
+        var user = users.removeUserById(socket.id);
+
+        if (user) {
+            io.to(user.room).emit('updateUserList', users.getUserListByRoom(user.room));
+            io.to(user.room).emit('newMessage', generateMessage('Admin', `${user.name}が退出しました。`));
+        }
     });
 });
 
